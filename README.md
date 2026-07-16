@@ -5,6 +5,22 @@ Use Codex from inside Claude Code for code reviews or to delegate tasks to Codex
 This plugin is for Claude Code users who want an easy way to start using Codex from the workflow
 they already have.
 
+> **Fork notice (dconchk/codex-plugin-cc, v1.1.0):** this fork changes sandbox
+> handling per upstream issue
+> [openai/codex-plugin-cc#240](https://github.com/openai/codex-plugin-cc/issues/240).
+> Upstream forces a sandbox mode on every plugin-launched thread (`read-only`
+> for reviews and read tasks, `workspace-write` for `task --write`), silently
+> overriding the user's `~/.codex/config.toml`. This fork **omits the sandbox
+> field by default**, so the Codex app server inherits your configured
+> `sandbox_mode` for every plugin thread, including reviews. Set
+> `CODEX_COMPANION_SANDBOX_MODE` to `read-only`, `workspace-write`, or
+> `danger-full-access` to force a mode for all plugin threads (`inherit`
+> or unset keeps the default omit). Consequence: with
+> `sandbox_mode = "danger-full-access"` and `approval_policy = "never"` in
+> config.toml, plugin-launched Codex jobs run unsandboxed as your user -
+> configure this only on hosts you consider an acceptable containment
+> boundary.
+
 <video src="./docs/plugin-demo.webm" controls muted playsinline autoplay></video>
 
 ## What You Get

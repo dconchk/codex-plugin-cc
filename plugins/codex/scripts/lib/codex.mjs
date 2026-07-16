@@ -59,27 +59,66 @@ function cleanCodexStderr(stderr) {
     .join("\n");
 }
 
+const SANDBOX_MODES = new Set(["read-only", "workspace-write", "danger-full-access"]);
+
+/**
+ * Resolve the sandbox mode for a plugin-launched thread.
+ *
+ * By default the sandbox field is OMITTED (returns null) so the Codex app
+ * server inherits the user's configured `sandbox_mode` from
+ * ~/.codex/config.toml (upstream issue openai/codex-plugin-cc#240: the plugin
+ * previously force-set a sandbox per thread, overriding user config).
+ *
+ * CODEX_COMPANION_SANDBOX_MODE forces a mode for every plugin thread:
+ *   "read-only" | "workspace-write" | "danger-full-access" -> force that mode
+ *   "inherit" or unset -> omit the field (config.toml governs)
+ * The env override wins over a caller-requested mode.
+ *
+ * @returns {string | null} sandbox mode, or null to omit the field
+ */
+export function resolveSandboxMode(requested = null, env = process.env) {
+  const override = String(env.CODEX_COMPANION_SANDBOX_MODE ?? "").trim();
+  if (override === "inherit") {
+    return null;
+  }
+  if (SANDBOX_MODES.has(override)) {
+    return override;
+  }
+  if (requested !== null && requested !== undefined && SANDBOX_MODES.has(requested)) {
+    return requested;
+  }
+  return null;
+}
+
 /** @returns {ThreadStartParams} */
 function buildThreadParams(cwd, options = {}) {
-  return {
+  const params = {
     cwd,
     model: options.model ?? null,
     approvalPolicy: options.approvalPolicy ?? "never",
-    sandbox: options.sandbox ?? "read-only",
     serviceName: SERVICE_NAME,
     ephemeral: options.ephemeral ?? true
   };
+  const sandbox = resolveSandboxMode(options.sandbox ?? null);
+  if (sandbox !== null) {
+    params.sandbox = sandbox;
+  }
+  return params;
 }
 
 /** @returns {ThreadResumeParams} */
 function buildResumeParams(threadId, cwd, options = {}) {
-  return {
+  const params = {
     threadId,
     cwd,
     model: options.model ?? null,
-    approvalPolicy: options.approvalPolicy ?? "never",
-    sandbox: options.sandbox ?? "read-only"
+    approvalPolicy: options.approvalPolicy ?? "never"
   };
+  const sandbox = resolveSandboxMode(options.sandbox ?? null);
+  if (sandbox !== null) {
+    params.sandbox = sandbox;
+  }
+  return params;
 }
 
 /** @returns {UserInput[]} */
@@ -1009,7 +1048,6 @@ export async function runAppServerReview(cwd, options = {}) {
     emitProgress(options.onProgress, "Starting Codex review thread.", "starting");
     const thread = await startThread(client, cwd, {
       model: options.model,
-      sandbox: "read-only",
       ephemeral: true,
       threadName: options.threadName
     });
