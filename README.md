@@ -5,7 +5,7 @@ Use Codex from inside Claude Code for code reviews or to delegate tasks to Codex
 This plugin is for Claude Code users who want an easy way to start using Codex from the workflow
 they already have.
 
-> **Fork notice (dconchk/codex-plugin-cc, v1.1.0):** this fork changes sandbox
+> **Fork notice (dconchk/codex-plugin-cc, v1.0.6-fork):** this fork changes sandbox
 > handling per upstream issue
 > [openai/codex-plugin-cc#240](https://github.com/openai/codex-plugin-cc/issues/240).
 > Upstream forces a sandbox mode on every plugin-launched thread (`read-only`
