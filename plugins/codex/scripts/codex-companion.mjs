@@ -487,6 +487,7 @@ async function executeTaskRun(request) {
     defaultPrompt: resumeThreadId ? DEFAULT_CONTINUE_PROMPT : "",
     model: request.model,
     effort: request.effort,
+    outputSchema: request.outputSchemaPath ? readOutputSchema(request.outputSchemaPath) : null,
     onProgress: request.onProgress,
     persistThread: true,
     threadName: resumeThreadId ? null : buildPersistentTaskThreadName(request.prompt || DEFAULT_CONTINUE_PROMPT)
@@ -599,7 +600,7 @@ function buildTaskJob(workspaceRoot, taskMetadata, write) {
   });
 }
 
-function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId }) {
+function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId, outputSchemaPath = null }) {
   return {
     cwd,
     model,
@@ -607,7 +608,8 @@ function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId
     prompt,
     write,
     resumeLast,
-    jobId
+    jobId,
+    outputSchemaPath
   };
 }
 
@@ -759,7 +761,7 @@ async function handleReview(argv) {
 
 async function handleTask(argv) {
   const { options, positionals } = parseCommandInput(argv, {
-    valueOptions: ["model", "effort", "cwd", "prompt-file"],
+    valueOptions: ["model", "effort", "cwd", "prompt-file", "output-schema"],
     booleanOptions: ["json", "write", "resume-last", "resume", "fresh", "background"],
     aliasMap: {
       m: "model"
@@ -778,6 +780,17 @@ async function handleTask(argv) {
     throw new Error("Choose either --resume/--resume-last or --fresh.");
   }
   const write = Boolean(options.write);
+  // --output-schema <file>: a JSON Schema the app-server enforces on the final response
+  // (turn/start `outputSchema`). Read once here so a missing or invalid file fails before
+  // a turn is spent; the path travels with the request so a background worker reads the
+  // same file.
+  const outputSchemaPath =
+    typeof options["output-schema"] === "string" && options["output-schema"].trim()
+      ? path.resolve(cwd, options["output-schema"].trim())
+      : null;
+  if (outputSchemaPath) {
+    readOutputSchema(outputSchemaPath);
+  }
   const taskMetadata = buildTaskRunMetadata({
     prompt,
     resumeLast
@@ -795,7 +808,8 @@ async function handleTask(argv) {
       prompt,
       write,
       resumeLast,
-      jobId: job.id
+      jobId: job.id,
+      outputSchemaPath
     });
     const { payload } = enqueueBackgroundTask(cwd, job, request);
     outputCommandResult(payload, renderQueuedTaskLaunch(payload), options.json);
@@ -814,6 +828,7 @@ async function handleTask(argv) {
         write,
         resumeLast,
         jobId: job.id,
+        outputSchemaPath,
         onProgress: progress
       }),
     { json: options.json }
