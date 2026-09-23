@@ -1944,6 +1944,94 @@ test("session end fully cleans up jobs for the ending session", async (t) => {
   assert.equal(otherJob.logFile, otherSessionLog);
 });
 
+test("session end keeps the shared broker while another session's job is live", async (t) => {
+  const repo = makeTempDir();
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const stateDir = resolveStateDir(repo);
+  fs.mkdirSync(stateDir, { recursive: true });
+
+  const spawnSleeper = () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      cwd: repo,
+      detached: true,
+      stdio: "ignore"
+    });
+    child.unref();
+    return child;
+  };
+  const isAlive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return error?.code !== "ESRCH";
+    }
+  };
+  const broker = spawnSleeper();
+  const otherJob = spawnSleeper();
+  t.after(() => {
+    for (const child of [broker, otherJob]) {
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        // Ignore missing process.
+      }
+    }
+  });
+
+  saveBrokerSession(repo, {
+    endpoint: `unix:${path.join(stateDir, "missing-broker.sock")}`,
+    pid: broker.pid
+  });
+  fs.writeFileSync(
+    path.join(stateDir, "state.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        config: { stopReviewGate: false },
+        jobs: [
+          {
+            id: "task-other",
+            status: "running",
+            title: "Codex Task",
+            sessionId: "sess-other",
+            pid: otherJob.pid,
+            createdAt: "2026-03-18T15:32:00.000Z",
+            updatedAt: "2026-03-18T15:33:00.000Z"
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const endSession = (sessionId) =>
+    run("node", [SESSION_HOOK, "SessionEnd"], {
+      cwd: repo,
+      env: { ...process.env, CODEX_COMPANION_SESSION_ID: sessionId },
+      input: JSON.stringify({ hook_event_name: "SessionEnd", session_id: sessionId, cwd: repo })
+    });
+
+  const first = endSession("sess-current");
+  assert.equal(first.status, 0, first.stderr);
+  assert.notEqual(loadBrokerSession(repo), null);
+  assert.equal(isAlive(broker.pid), true);
+  assert.equal(isAlive(otherJob.pid), true);
+  const state = JSON.parse(fs.readFileSync(path.join(stateDir, "state.json"), "utf8"));
+  assert.deepEqual(state.jobs.map((job) => [job.id, job.status]), [["task-other", "running"]]);
+
+  const last = endSession("sess-other");
+  assert.equal(last.status, 0, last.stderr);
+  assert.equal(loadBrokerSession(repo), null);
+  await waitFor(() => !isAlive(broker.pid) && !isAlive(otherJob.pid));
+});
+
 test("stop hook runs a stop-time review task and blocks on findings when the review gate is enabled", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

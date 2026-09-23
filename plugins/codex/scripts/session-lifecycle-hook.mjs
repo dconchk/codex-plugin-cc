@@ -97,11 +97,17 @@ async function handleSessionEnd(input) {
   const sessionDir = brokerSession?.sessionDir ?? null;
   const pid = brokerSession?.pid ?? null;
 
+  cleanupSessionJobs(cwd, input.session_id || process.env[SESSION_ID_ENV]);
+  const brokerStillInUse = loadState(resolveWorkspaceRoot(cwd)).jobs.some(
+    (job) => job.status === "queued" || job.status === "running"
+  );
+  if (brokerStillInUse) {
+    return;
+  }
+
   if (brokerEndpoint) {
     await sendBrokerShutdown(brokerEndpoint);
   }
-
-  cleanupSessionJobs(cwd, input.session_id || process.env[SESSION_ID_ENV]);
   teardownBrokerSession({
     endpoint: brokerEndpoint,
     pidFile,
