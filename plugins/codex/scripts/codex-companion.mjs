@@ -17,6 +17,7 @@ import {
     importExternalAgentSession,
     interruptAppServerTurn,
     parseStructuredOutput,
+    readDeveloperInstructions,
     readOutputSchema,
     runAppServerReview,
     runAppServerTurn
@@ -79,7 +80,7 @@ function printUsage() {
       "  node scripts/codex-companion.mjs setup [--enable-review-gate|--disable-review-gate] [--json]",
       "  node scripts/codex-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>]",
       "  node scripts/codex-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
-      "  node scripts/codex-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|spark>] [--effort <none|minimal|low|medium|high|xhigh|max>] [prompt]",
+      "  node scripts/codex-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|spark>] [--effort <none|minimal|low|medium|high|xhigh|max>] [--output-schema <file>] [--developer-instructions-file <file>] [prompt]",
       "  node scripts/codex-companion.mjs transfer [--source <claude-jsonl>] [--json]",
       "  node scripts/codex-companion.mjs status [job-id] [--all] [--json]",
       "  node scripts/codex-companion.mjs result [job-id] [--json]",
@@ -488,6 +489,7 @@ async function executeTaskRun(request) {
     model: request.model,
     effort: request.effort,
     outputSchema: request.outputSchemaPath ? readOutputSchema(request.outputSchemaPath) : null,
+    developerInstructions: request.developerInstructionsPath ? readDeveloperInstructions(request.developerInstructionsPath) : null,
     onProgress: request.onProgress,
     persistThread: true,
     threadName: resumeThreadId ? null : buildPersistentTaskThreadName(request.prompt || DEFAULT_CONTINUE_PROMPT)
@@ -600,7 +602,7 @@ function buildTaskJob(workspaceRoot, taskMetadata, write) {
   });
 }
 
-function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId, outputSchemaPath = null }) {
+function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId, outputSchemaPath = null, developerInstructionsPath = null }) {
   return {
     cwd,
     model,
@@ -609,7 +611,8 @@ function buildTaskRequest({ cwd, model, effort, prompt, write, resumeLast, jobId
     write,
     resumeLast,
     jobId,
-    outputSchemaPath
+    outputSchemaPath,
+    developerInstructionsPath
   };
 }
 
@@ -761,7 +764,7 @@ async function handleReview(argv) {
 
 async function handleTask(argv) {
   const { options, positionals } = parseCommandInput(argv, {
-    valueOptions: ["model", "effort", "cwd", "prompt-file", "output-schema"],
+    valueOptions: ["model", "effort", "cwd", "prompt-file", "output-schema", "developer-instructions-file"],
     booleanOptions: ["json", "write", "resume-last", "resume", "fresh", "background"],
     aliasMap: {
       m: "model"
@@ -791,6 +794,16 @@ async function handleTask(argv) {
   if (outputSchemaPath) {
     readOutputSchema(outputSchemaPath);
   }
+  // --developer-instructions-file <file>: the thread's developer instructions (thread/start
+  // `developerInstructions`), added on top of Codex's own. A new thread only; a resumed thread
+  // keeps the instructions it started with. Read once here so a missing or empty file fails first.
+  const developerInstructionsPath =
+    typeof options["developer-instructions-file"] === "string" && options["developer-instructions-file"].trim()
+      ? path.resolve(cwd, options["developer-instructions-file"].trim())
+      : null;
+  if (developerInstructionsPath) {
+    readDeveloperInstructions(developerInstructionsPath);
+  }
   const taskMetadata = buildTaskRunMetadata({
     prompt,
     resumeLast
@@ -809,7 +822,8 @@ async function handleTask(argv) {
       write,
       resumeLast,
       jobId: job.id,
-      outputSchemaPath
+      outputSchemaPath,
+      developerInstructionsPath
     });
     const { payload } = enqueueBackgroundTask(cwd, job, request);
     outputCommandResult(payload, renderQueuedTaskLaunch(payload), options.json);
@@ -829,6 +843,7 @@ async function handleTask(argv) {
         resumeLast,
         jobId: job.id,
         outputSchemaPath,
+        developerInstructionsPath,
         onProgress: progress
       }),
     { json: options.json }

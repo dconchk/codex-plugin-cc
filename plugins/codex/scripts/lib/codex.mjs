@@ -99,6 +99,9 @@ function buildThreadParams(cwd, options = {}) {
     serviceName: SERVICE_NAME,
     ephemeral: options.ephemeral ?? true
   };
+  if (options.developerInstructions) {
+    params.developerInstructions = options.developerInstructions;
+  }
   const sandbox = resolveSandboxMode(options.sandbox ?? null);
   if (sandbox !== null) {
     params.sandbox = sandbox;
@@ -1152,6 +1155,7 @@ export async function runAppServerTurn(cwd, options = {}) {
       const response = await startThread(client, cwd, {
         model: options.model,
         sandbox: options.sandbox,
+        developerInstructions: options.developerInstructions ?? null,
         ephemeral: options.persistThread ? false : true,
         threadName: options.persistThread ? options.threadName : options.threadName ?? null
       });
@@ -1252,6 +1256,14 @@ export function parseStructuredOutput(rawOutput, fallback = {}) {
 
 export function readOutputSchema(schemaPath) {
   return readJsonFile(schemaPath);
+}
+
+export function readDeveloperInstructions(instructionsPath) {
+  const text = fs.readFileSync(instructionsPath, "utf8");
+  if (!text.trim()) {
+    throw new Error(`Developer instructions file is empty: ${instructionsPath}`);
+  }
+  return text;
 }
 
 export { DEFAULT_CONTINUE_PROMPT, TASK_THREAD_PREFIX };

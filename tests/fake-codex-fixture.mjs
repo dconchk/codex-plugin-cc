@@ -315,6 +315,7 @@ rl.on("line", (line) => {
         const thread = nextThread(state, message.params.cwd, message.params.ephemeral);
         thread.sandboxFieldPresent = Object.prototype.hasOwnProperty.call(message.params || {}, "sandbox");
         thread.requestedSandbox = thread.sandboxFieldPresent ? message.params.sandbox : null;
+        thread.developerInstructions = message.params.developerInstructions ?? null;
         saveState(state);
         send({ id: message.id, result: { thread: buildThread(thread), model: message.params.model || "gpt-5.4", modelProvider: "openai", serviceTier: null, cwd: thread.cwd, approvalPolicy: "never", sandbox: { type: "readOnly", access: { type: "fullAccess" }, networkAccess: false }, reasoningEffort: null } });
         send({ method: "thread/started", params: { thread: { id: thread.id } } });
