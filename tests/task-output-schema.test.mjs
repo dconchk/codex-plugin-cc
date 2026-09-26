@@ -11,9 +11,9 @@ const COMPANION = path.join(ROOT, "plugins", "codex", "scripts", "codex-companio
 
 test("task accepts --output-schema and forwards it to the turn", () => {
   const source = fs.readFileSync(COMPANION, "utf8");
-  assert.match(source, /valueOptions: \["model", "effort", "cwd", "prompt-file", "output-schema"\]/);
+  assert.match(source, /valueOptions: \["model", "effort", "cwd", "prompt-file", "output-schema", "developer-instructions-file"\]/);
   assert.match(source, /outputSchema: request\.outputSchemaPath \? readOutputSchema\(request\.outputSchemaPath\) : null/);
-  assert.match(source, /buildTaskRequest\(\{ cwd, model, effort, prompt, write, resumeLast, jobId, outputSchemaPath = null \}\)/);
+  assert.match(source, /buildTaskRequest\(\{ cwd, model, effort, prompt, write, resumeLast, jobId, outputSchemaPath = null, developerInstructionsPath = null \}\)/);
 });
 
 test("task --output-schema with a missing file fails before any turn, naming the file", () => {
