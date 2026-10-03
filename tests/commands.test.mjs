@@ -3,6 +3,8 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { buildEnv, installFakeCodex } from "./fake-codex-fixture.mjs";
+import { initGitRepo, makeTempDir, run } from "./helpers.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN_ROOT = path.join(ROOT, "plugins", "codex");
@@ -10,6 +12,38 @@ const PLUGIN_ROOT = path.join(ROOT, "plugins", "codex");
 function read(relativePath) {
   return fs.readFileSync(path.join(PLUGIN_ROOT, relativePath), "utf8");
 }
+
+test("task --thread-id resumes exactly that thread, fails for an unknown id, and refuses --resume-last", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  const script = path.join(PLUGIN_ROOT, "scripts", "codex-companion.mjs");
+  const options = { cwd: repo, env: buildEnv(binDir) };
+  const first = run("node", [script, "task", "--json", "initial task"], options);
+  assert.equal(first.status, 0, first.stderr);
+  const threadId = JSON.parse(first.stdout).threadId;
+  assert.ok(threadId);
+  const newer = run("node", [script, "task", "--fresh", "newer task"], options);
+  assert.equal(newer.status, 0, newer.stderr);
+
+  const resumed = run("node", [script, "task", "--json", "--thread-id", threadId], options);
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(JSON.parse(resumed.stdout).threadId, threadId);
+  const statePath = path.join(binDir, "fake-codex-state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  assert.equal(state.lastTurnStart.threadId, threadId);
+  assert.equal(state.threads.length, 2);
+
+  const unknown = run("node", [script, "task", "--thread-id", "missing-thread", "follow up"], options);
+  assert.notEqual(unknown.status, 0);
+  assert.match(`${unknown.stdout}\n${unknown.stderr}`, /Could not resume thread missing-thread/);
+
+  const conflict = run("node", [script, "task", "--thread-id", threadId, "--resume-last"], options);
+  assert.notEqual(conflict.status, 0);
+  assert.match(conflict.stderr, /--thread-id cannot be combined with --resume-last/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(statePath, "utf8")), state);
+});
 
 test("review command uses AskUserQuestion and background Bash while staying review-only", () => {
   const source = read("commands/review.md");
