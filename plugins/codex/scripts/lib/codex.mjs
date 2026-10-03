@@ -1148,7 +1148,12 @@ export async function runAppServerTurn(cwd, options = {}) {
         model: options.model,
         sandbox: options.sandbox,
         ephemeral: false
+      }).catch((error) => {
+        throw new Error(`Could not resume thread ${options.resumeThreadId}: ${error.message}`);
       });
+      if (response.thread.id !== options.resumeThreadId) {
+        throw new Error(`Could not resume thread ${options.resumeThreadId}: app-server returned thread ${response.thread.id}.`);
+      }
       threadId = response.thread.id;
     } else {
       emitProgress(options.onProgress, "Starting Codex task thread.", "starting");
